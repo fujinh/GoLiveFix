@@ -1,0 +1,29 @@
+[package]
+name = "golivefix-hook"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Loaded by every Discord process as a proxy "version.dll" (Discord imports
+# the real one). It binds Discord's own new sockets to the tunnel's address so
+# the plugin can steer them; see src/lib.rs. Not a generic injector: it only
+# runs inside Discord, started by the user through the GoLiveFix plugin.
+[lib]
+name = "version"
+# rlib too, so `cargo test` can link the state logic as a normal library.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+retour = { version = "0.3.1", default-features = false }
+windows-sys = { version = "0.60.2", features = [
+    "Win32_Foundation",
+    "Win32_System_LibraryLoader",
+    "Win32_System_SystemInformation",
+    "Win32_Networking_WinSock",
+] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+panic = "abort"
+strip = true

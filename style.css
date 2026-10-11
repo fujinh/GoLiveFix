@@ -1,0 +1,30 @@
+.vc-golivefix-panel-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--interactive-icon-default, var(--interactive-normal));
+    opacity: 0.6;
+    cursor: pointer;
+}
+
+.vc-golivefix-panel-button:hover {
+    background: var(--background-modifier-hover);
+    color: var(--interactive-icon-hover, var(--interactive-hover));
+    opacity: 1;
+}
+
+.vc-golivefix-panel-button.vc-golivefix-arm {
+    color: var(--status-positive);
+    opacity: 1;
+}
+
+.vc-golivefix-panel-button.vc-golivefix-keep {
+    color: var(--status-warning);
+    opacity: 1;
+}
