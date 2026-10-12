@@ -29,7 +29,7 @@ const settings = definePluginSettings({
     enterOnStartup: {
         type: OptionType.BOOLEAN,
         description: "Entrar no túnel ao abrir o Discord",
-        default: false
+        default: true
     },
     autoTeardown: {
         type: OptionType.BOOLEAN,
@@ -39,12 +39,12 @@ const settings = definePluginSettings({
     teardownDelayMs: {
         type: OptionType.NUMBER,
         description: "Espera para soltar após a stream começar (ms)",
-        default: 4000
+        default: 3000
     },
     releaseAfterRelaunchMs: {
         type: OptionType.NUMBER,
         description: "Soltar após entrar no túnel (ms, 0 = só na stream)",
-        default: 5000
+        default: 2000
     },
     keepMediaInTunnel: {
         type: OptionType.BOOLEAN,
