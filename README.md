@@ -51,6 +51,9 @@ O script:
 - instala o que faltar (WireGuard, Git, Node.js e pnpm);
 - pede o `.conf`, ajusta ele como no [passo 3 da instalação manual](#3-config-wireguard) e instala como
   o túnel `golivefix`. Esta é a única parte que pede administrador, numa janela do UAC;
+- cria a tarefa agendada `GoLiveFix-Tunnel`, que ativa o túnel como no botão **Ativar** do WireGuard.
+  Quando o plugin precisa do túnel e ele está desativado, roda essa tarefa e ativa o túnel sozinho, sem
+  UAC. Só o seu usuário pode rodar a tarefa, e ela não faz mais nada;
 - confere se o túnel funciona: o PC tem que sair direto e o túnel pela VPN;
 - baixa o Vencord na pasta `Vencord`, dentro da pasta do GoLiveFix (o git ignora essa pasta), compila
   com o plugin e injeta no Discord. Se o Discord já carrega o Vencord dessa pasta, a injeção é pulada;
@@ -385,7 +388,7 @@ Em **Configurações → Vencord → Plugins → GoLiveFix**:
 | Opção | Padrão | O que faz |
 |---|---|---|
 | Mostrar o escudo ao lado do microfone | ligado | Desligado, o escudo some; o túnel continua controlável por esta tela |
-| Entrar no túnel ao abrir o Discord | desligado | Ao abrir ou recarregar (Ctrl+R) o Discord, liga o túnel antes de a tela carregar. Se ele só entra reiniciando, reinicia, uma vez por abertura: se o túnel não estiver ativo, só avisa |
+| Entrar no túnel ao abrir o Discord | desligado | Ao abrir ou recarregar (Ctrl+R) o Discord, liga o túnel antes de a tela carregar. Se ele só entra reiniciando, reinicia, uma vez por abertura. No Windows, ativa o túnel do WireGuard se ele estiver desativado. Se não der certo, só avisa |
 | Soltar o túnel quando a stream começar | ligado | Solta o túnel depois que a sua stream, ou a que você assiste, começa |
 | Espera para soltar após a stream começar | 4000 ms | Tempo até soltar o túnel |
 | Soltar após entrar no túnel | 5000 ms | Tempo até soltar o túnel depois de entrar nele. `0` = só quando uma stream começar |
@@ -416,7 +419,8 @@ Vencord: depois de uma atualização dele, rode o `setup-linux.sh` de novo.
 3. No Windows:
    - com o Discord fechado, apague `version.dll` e `version.dll.old-*` de
      `%LOCALAPPDATA%\Discord\app-*\`;
-   - remova o túnel no WireGuard.
+   - remova o túnel no WireGuard;
+   - apague a tarefa do túnel, num terminal de administrador: `schtasks /delete /tn GoLiveFix-Tunnel /f`.
 4. No Linux: apague `~/.config/discord-vpn/` (o config) e, se o script baixou o Node.js,
    `~/.local/share/golivefix/`.
 
@@ -427,9 +431,13 @@ Vencord: depois de uma atualização dele, rode o `setup-linux.sh` de novo.
 Não há arquivo de log. Os últimos eventos aparecem em **Configurações → Vencord → Plugins → GoLiveFix**,
 e os erros também aparecem em notificação.
 
-- **"o túnel WireGuard "golivefix" não está ativo":** ative o túnel no WireGuard. Se ele tem outro
-  nome, renomeie para `golivefix`, ou crie a variável de ambiente de usuário `GOLIVEFIX_ADAPTER` com o
-  nome dele e reabra o Discord.
+- **"o túnel WireGuard "golivefix" está desativado e o GoLiveFix não consegue ativá-lo":** falta a
+  tarefa `GoLiveFix-Tunnel` (instalação manual, ou instalado antes dela existir). Rode o
+  `setup-windows.ps1` de novo, ou ative o túnel no WireGuard. Se o túnel tem outro nome, renomeie para
+  `golivefix`, ou crie a variável de ambiente de usuário `GOLIVEFIX_ADAPTER` com o nome dele e reabra o
+  Discord (nesse caso, ative ele no WireGuard: a tarefa só ativa o `golivefix`).
+- **"o túnel WireGuard "golivefix" não subiu":** a tarefa rodou, mas o túnel não ficou ativo em 20 s.
+  Veja o log no app do WireGuard.
 - **"não tem rota para a internet":** falta a rota de métrica 9000. Confira o
   [passo 3 da instalação manual](#3-config-wireguard).
 - **"não foi possível gravar a version.dll":** feche o Discord por completo, inclusive na bandeja, e

@@ -44,6 +44,7 @@ param(
 
     # Internal: the elevated half, started by this script through UAC.
     [string]$ElevatedInstall,
+    [string]$UserSid,
     [switch]$ElevatedRoute,
     [string]$LogFile
 )
@@ -56,6 +57,8 @@ $RouteCommand = "netsh interface ipv4 add route 0.0.0.0/0 $TunnelName metric=900
 $WgDir = Join-Path $env:ProgramFiles "WireGuard"
 $WgExe = Join-Path $WgDir "wireguard.exe"
 $WgService = "WireGuardTunnel`$$TunnelName"
+# Must match START_TASK in tunnel-windows.ts.
+$StartTaskName = "GoLiveFix-Tunnel"
 # Install folder, process and exe name of the Discord to inject.
 $DiscordName = @{ stable = "Discord"; ptb = "DiscordPTB"; canary = "DiscordCanary" }[$Branch]
 $DiscordStarted = $false
@@ -231,6 +234,30 @@ function Install-TunnelElevated([string]$confPath) {
         Add-RouteElevated
         Log "AVISO: o PostUp não criou a rota; ela foi criada agora, mas ela some quando o túnel for desativado"
     }
+
+    Register-StartTask $dpapi
+}
+
+<#
+ A task that activates the tunnel as SYSTEM, the same as "Ativar" in the
+ WireGuard app, which the plugin runs when it needs the tunnel and finds it
+ down: Discord has no administrator rights to do it. Only the user who ran
+ the setup may run it, and it takes no input, so that's all it allows.
+#>
+function Register-StartTask([string]$dpapi) {
+    $action = New-ScheduledTaskAction -Execute $WgExe -Argument "/installtunnelservice `"$dpapi`""
+    $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
+        -ExecutionTimeLimit (New-TimeSpan -Minutes 2) -MultipleInstances IgnoreNew
+    Register-ScheduledTask -TaskName $StartTaskName -Action $action -Principal $principal -Settings $settings -Force | Out-Null
+
+    # Read and run (GRGX) for the user, on top of the default DACL.
+    $svc = New-Object -ComObject Schedule.Service
+    $svc.Connect()
+    $task = $svc.GetFolder("\").GetTask($StartTaskName)
+    $dacl = $task.GetSecurityDescriptor(4) # DACL_SECURITY_INFORMATION
+    if ($dacl -notmatch [regex]::Escape(";;;$UserSid)")) { $task.SetSecurityDescriptor($dacl + "(A;;GRGX;;;$UserSid)", 0) }
+    Log "tarefa $StartTaskName criada: o plugin ativa o túnel sozinho quando ele estiver desativado"
 }
 
 function Add-RouteElevated {
@@ -319,7 +346,9 @@ function Setup-Tunnel {
         # Holds the private key: lives only until the elevated half imports it.
         [IO.File]::WriteAllText($tmp, $prepared + "`r`n")
         Ok "config preparado a partir de $(Split-Path $Conf -Leaf)"
-        Invoke-Elevated @("-ElevatedInstall", "`"$tmp`"")
+        # The elevated half may run as another (administrator) account.
+        $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+        Invoke-Elevated @("-ElevatedInstall", "`"$tmp`"", "-UserSid", $sid)
     } finally {
         Remove-Item $tmp -ErrorAction SilentlyContinue
     }

@@ -86,6 +86,14 @@ async function enter(sender: WebContents, what: string): Promise<EnterResult> {
  * When this Discord can only get in by restarting, the renderer still does
  * that (enterOnStartup below).
  */
+{
+    // Discord takes a few seconds to show its page: bring a tunnel that's
+    // down up meanwhile, so that page can already load in it.
+    const settings = RendererSettings.store.plugins?.GoLiveFix;
+    if (settings?.enabled && settings.enterOnStartup)
+        wg.startTunnel().catch(e => log(`erro: ${errorMessage(e)}`));
+}
+
 app.on("web-contents-created", (_, wc) => {
     wc.on("did-start-navigation", (_e, url, isInPlace, isMainFrame) => {
         if (isMainFrame && !isInPlace && isMainPage(url)) armForPageLoad(wc);

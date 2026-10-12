@@ -78,6 +78,9 @@ export class LinuxTunnel implements TunnelBackend {
         throw new Error(`discord-vpn não confirmou o modo "${mode}"`);
     }
 
+    /** discord-vpn.sh brings the tunnel up with the namespace. */
+    async startTunnel(): Promise<void> { }
+
     /** A process can't join the namespace after it started: only a relaunch can. */
     async enterInPlace(): Promise<boolean> {
         return false;

@@ -15,6 +15,7 @@
  * each Discord update) takes a restart.
  */
 
+import { execFile } from "child_process";
 import { createSocket } from "dgram";
 import { app } from "electron";
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "fs";
@@ -70,12 +71,12 @@ export class WindowsTunnel implements TunnelBackend {
             throw new Error("túnel indisponível: ligue pelo escudo para o Discord reiniciar com o GoLiveFix");
         // The address is re-read each time: the tunnel may have come up (or
         // changed) since. Disarm needs none, so it works with the tunnel down.
-        await writeState(mode === "disarm" ? mode : `${mode} ${tunnelIp()}`);
+        await writeState(mode === "disarm" ? mode : `${mode} ${await upTunnelIp()}`);
     }
 
     async enterInPlace(): Promise<boolean> {
         if (!proxyLoaded()) return false;
-        await checkTunnelRoute(tunnelIp());
+        await checkTunnelRoute(await upTunnelIp());
         await this.set("arm");
         this.entered = true;
         return true;
@@ -84,11 +85,16 @@ export class WindowsTunnel implements TunnelBackend {
     /**
      * Like enterInPlace(), but the state file is written before returning and
      * the route is checked after (it takes a moment), undoing the arm if the
-     * tunnel can't reach the internet.
+     * tunnel can't reach the internet. A tunnel that's down can't wait: it's
+     * started for whatever needs it next, and this fails.
      */
     armNow(): false | Promise<void> {
         if (!proxyLoaded()) return false;
-        const ip = tunnelIp();
+        const ip = findTunnelIp();
+        if (!ip) {
+            startTunnel().catch(() => { /* reported by whoever waits on it */ });
+            throw new Error(`o túnel WireGuard "${TUNNEL_ADAPTER}" estava desativado; ativando`);
+        }
         writeStateSync(`arm ${ip}`);
         this.entered = true;
         return checkTunnelRoute(ip).catch(async e => {
@@ -104,7 +110,7 @@ export class WindowsTunnel implements TunnelBackend {
      * traffic.
      */
     async relaunchIntoTunnel(_baseDir: string, arm: boolean): Promise<void> {
-        const ip = tunnelIp();
+        const ip = await upTunnelIp();
         await checkTunnelRoute(ip);
 
         // Discord.exe's folder. Discord updates make a new app-x.y.z folder
@@ -117,6 +123,10 @@ export class WindowsTunnel implements TunnelBackend {
         app.relaunch();
         // Give the renderer time to get the reply and persist settings.
         setTimeout(() => app.exit(0), 1500);
+    }
+
+    async startTunnel(): Promise<void> {
+        await upTunnelIp();
     }
 }
 
@@ -215,15 +225,51 @@ function safeReaddir(dir: string): string[] {
     }
 }
 
-/** The tunnel adapter's IPv4; its presence also shows that it's up. */
-function tunnelIp(): string {
-    const addrs = networkInterfaces()[TUNNEL_ADAPTER];
-    if (!addrs)
-        throw new Error(`o túnel WireGuard "${TUNNEL_ADAPTER}" não está ativo; ative-o no app do WireGuard primeiro`);
+/** The tunnel adapter's IPv4, or null when it's down (no adapter, or no address yet). */
+function findTunnelIp(): string | null {
     // Older Node reports family as a number.
-    const v4 = addrs.find(a => (a.family as string | number) === "IPv4" || (a.family as string | number) === 4);
-    if (!v4) throw new Error(`o túnel "${TUNNEL_ADAPTER}" não tem endereço IPv4`);
-    return v4.address;
+    const v4 = networkInterfaces()[TUNNEL_ADAPTER]?.find(a => (a.family as string | number) === "IPv4" || (a.family as string | number) === 4);
+    return v4?.address ?? null;
+}
+
+/** The tunnel's IPv4, starting the tunnel first if it's down. */
+async function upTunnelIp(): Promise<string> {
+    const ip = findTunnelIp();
+    return ip ?? startTunnel();
+}
+
+// Must match $StartTaskName in setup-windows.ps1.
+const START_TASK = "GoLiveFix-Tunnel";
+// The first tunnel start after a boot took 8 s to create the adapter here.
+const START_TIMEOUT_MS = 20_000;
+
+let starting: Promise<string> | null = null;
+
+/**
+ * Activate the tunnel, as "Ativar" in the WireGuard app does, and wait until
+ * it can carry traffic. That takes administrator rights, so the setup leaves
+ * a scheduled task that does just this as SYSTEM and that this user may run.
+ * Concurrent callers share one start. Resolves to the tunnel's IPv4.
+ */
+function startTunnel(): Promise<string> {
+    starting ??= (async () => {
+        try {
+            await new Promise<void>((resolve, reject) =>
+                execFile("schtasks.exe", ["/run", "/tn", START_TASK], { windowsHide: true }, err => err ? reject(err) : resolve()));
+        } catch {
+            throw new Error(`o túnel WireGuard "${TUNNEL_ADAPTER}" está desativado e o GoLiveFix não consegue ativá-lo; ative no app do WireGuard ou rode o setup-windows.ps1 de novo`);
+        }
+        // The PostUp route comes right after the address.
+        const deadline = Date.now() + START_TIMEOUT_MS;
+        for (; ;) {
+            const ip = findTunnelIp();
+            if (ip && await checkTunnelRoute(ip).then(() => true, () => false)) return ip;
+            if (Date.now() > deadline)
+                throw new Error(`o túnel WireGuard "${TUNNEL_ADAPTER}" não subiu; veja o log no app do WireGuard`);
+            await new Promise(r => setTimeout(r, 250));
+        }
+    })().finally(() => { starting = null; });
+    return starting;
 }
 
 /**

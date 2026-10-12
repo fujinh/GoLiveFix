@@ -51,6 +51,13 @@ export interface TunnelBackend {
      * it's been undone (say, the tunnel can't reach the internet).
      */
     armNow(): false | Promise<void>;
+
+    /**
+     * Bring the WireGuard tunnel up if it's down, where that's up to the
+     * plugin (Windows; on Linux discord-vpn.sh owns it). The other methods do
+     * this on their own when they need the tunnel; this is for getting ahead.
+     */
+    startTunnel(): Promise<void>;
 }
 
 class UnsupportedTunnel implements TunnelBackend {
@@ -75,6 +82,8 @@ class UnsupportedTunnel implements TunnelBackend {
     armNow(): false {
         return false;
     }
+
+    async startTunnel(): Promise<void> { }
 }
 
 export function createTunnelBackend(): TunnelBackend {
