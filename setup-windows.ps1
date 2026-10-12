@@ -9,12 +9,13 @@
        funciona. Esta é a única parte que pede administrador (uma janela do UAC).
     3. Baixa e compila o Vencord com o plugin e injeta no Discord.
 
-    Pode rodar de novo quando quiser: o que já está feito é pulado, e o plugin
-    é copiado e compilado de novo (serve para atualizar).
+    Pode rodar de novo quando quiser: o .conf é pedido de novo e o túnel
+    reinstalado com ele, o que já está instalado é pulado, e o plugin é copiado
+    e compilado de novo (serve para atualizar).
 
 .PARAMETER Conf
-    O .conf do WireGuard (ProtonVPN etc.). Sem ele: se o túnel "golivefix" já
-    existe, só é conferido; se não existe, abre uma janela para escolher o arquivo.
+    O .conf do WireGuard (ProtonVPN etc.). Sem ele, abre uma janela para
+    escolher o arquivo. O túnel "golivefix" é sempre instalado de novo com ele.
 
 .PARAMETER VencordDir
     Onde fica o código do Vencord. Padrão: a pasta Vencord ao lado deste
@@ -161,6 +162,26 @@ function Get-TunnelRoute {
     Get-NetRoute -InterfaceAlias $TunnelName -DestinationPrefix "0.0.0.0/0" -ErrorAction SilentlyContinue
 }
 
+function Get-TunnelAddress {
+    Get-NetIPAddress -InterfaceAlias $TunnelName -AddressFamily IPv4 -ErrorAction SilentlyContinue | Select-Object -First 1
+}
+
+# Starting or running. A tunnel that fails stops and the manager removes it.
+function Test-TunnelServiceAlive {
+    $s = Get-Service $WgService -ErrorAction SilentlyContinue
+    return [bool]($s -and $s.Status -ne "Stopped")
+}
+
+<#
+ Waits for the tunnel adapter to get its address. The first tunnel on a PC
+ also installs WireGuard's driver, which can take well over 20 s, so this
+ waits long and only gives up early if the service stops.
+#>
+function Wait-TunnelUp([int]$seconds) {
+    [void](Wait-Until $seconds { (Get-TunnelAddress) -or -not (Test-TunnelServiceAlive) })
+    return Get-TunnelAddress
+}
+
 function Install-TunnelElevated([string]$confPath) {
     if (-not (Test-Path $WgExe)) { throw "WireGuard não encontrado em $WgDir" }
 
@@ -199,7 +220,7 @@ function Install-TunnelElevated([string]$confPath) {
 
     # Same as "Ativar" in the UI: an auto-start service, back after a reboot.
     Start-Wg @("/installtunnelservice", $dpapi)
-    if (-not (Wait-Until 20 { Get-NetIPAddress -InterfaceAlias $TunnelName -AddressFamily IPv4 -ErrorAction SilentlyContinue })) {
+    if (-not (Wait-TunnelUp 120)) {
         throw "o túnel $TunnelName não subiu; veja o log no app do WireGuard"
     }
     Log "túnel $TunnelName ativo"
@@ -284,11 +305,6 @@ function Select-ConfFile {
 
 function Setup-Tunnel {
     Step "Túnel WireGuard ($TunnelName)"
-    $exists = [bool](Get-Service $WgService -ErrorAction SilentlyContinue)
-    if (-not $Conf -and $exists) {
-        Ok "o túnel já existe; ele só vai ser conferido (para trocar o servidor, rode com -Conf <arquivo.conf>)"
-        return
-    }
     if (-not $Conf) {
         Info "escolha o .conf baixado do seu provedor de VPN (ex.: ProtonVPN, opção Windows)"
         $script:Conf = Select-ConfFile
@@ -311,7 +327,11 @@ function Setup-Tunnel {
 
 function Test-Tunnel {
     Step "Conferindo o túnel"
-    $addr = Get-NetIPAddress -InterfaceAlias $TunnelName -AddressFamily IPv4 -ErrorAction SilentlyContinue | Select-Object -First 1
+    $addr = Get-TunnelAddress
+    if (-not $addr -and (Test-TunnelServiceAlive)) {
+        Info "esperando o túnel subir..."
+        $addr = Wait-TunnelUp 60
+    }
     if (-not $addr) { throw "o túnel $TunnelName não está ativo; ative no app do WireGuard e rode de novo" }
     Ok "túnel ativo, endereço $($addr.IPAddress)"
 
@@ -327,7 +347,11 @@ function Test-Tunnel {
 
     # -s keeps curl off stderr, which Windows PowerShell would turn into errors.
     $direct = curl.exe -s -4 --max-time 10 https://ifconfig.me
-    $vpn = curl.exe -s --max-time 10 --interface $addr.IPAddress https://ifconfig.me
+    # A tunnel that just came up may still be on its first handshake.
+    $vpn = $null
+    for ($i = 0; $i -lt 3 -and -not $vpn; $i++) {
+        $vpn = curl.exe -s --max-time 10 --interface $addr.IPAddress https://ifconfig.me
+    }
     $global:LASTEXITCODE = 0
     if (-not $vpn) { throw "nada passa pelo túnel; o servidor da VPN não responde ou o config está errado (veja o log no app do WireGuard)" }
     if ($direct -and $direct -eq $vpn) { Warn "o PC e o túnel saem pelo mesmo IP ($vpn): o PC inteiro está indo pela VPN?" }

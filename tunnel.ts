@@ -40,6 +40,17 @@ export interface TunnelBackend {
      * relaunchIntoTunnel() can (nothing was changed then).
      */
     enterInPlace(): Promise<boolean>;
+
+    /**
+     * Arm right away, for a page that is starting to load and can't be held
+     * back: by the time this returns, the mode is in effect (Windows) or in
+     * the supervisor's hands (Linux), ahead of the page's connections. Only
+     * when this Discord can be steered without a restart, entering in place
+     * if needed; false otherwise, with nothing changed. Throws if it can't
+     * arm. The promise settles once the arm is confirmed, or rejects once
+     * it's been undone (say, the tunnel can't reach the internet).
+     */
+    armNow(): false | Promise<void>;
 }
 
 class UnsupportedTunnel implements TunnelBackend {
@@ -58,6 +69,10 @@ class UnsupportedTunnel implements TunnelBackend {
     }
 
     async enterInPlace(): Promise<boolean> {
+        return false;
+    }
+
+    armNow(): false {
         return false;
     }
 }

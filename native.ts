@@ -9,6 +9,7 @@
  * Owns the tunnel routing control, through the platform's backend (tunnel.ts).
  */
 
+import { RendererSettings } from "@main/settings";
 import { app, type IpcMainInvokeEvent, type WebContents } from "electron";
 import { join } from "path";
 
@@ -74,6 +75,52 @@ async function enter(sender: WebContents, what: string): Promise<EnterResult> {
     relaunching = true;
     log(`${what}: reiniciando o Discord`);
     return { ok: true, relaunching: true };
+}
+
+/**
+ * With "enter on startup" on, every load of Discord's main page (opening it,
+ * Ctrl+R, the reload after a renderer crash, any location.reload()) starts in
+ * the tunnel: it's armed here as the navigation starts, before the page opens
+ * any connection, rather than by the renderer once it's up, which would take
+ * another reload. The renderer then does the usual post-restart release.
+ * When this Discord can only get in by restarting, the renderer still does
+ * that (enterOnStartup below).
+ */
+app.on("web-contents-created", (_, wc) => {
+    wc.on("did-start-navigation", (_e, url, isInPlace, isMainFrame) => {
+        if (isMainFrame && !isInPlace && isMainPage(url)) armForPageLoad(wc);
+    });
+});
+
+// Discord's main page; its popouts (and overlay) share the state but aren't it.
+function isMainPage(url: string): boolean {
+    try {
+        const u = new URL(url);
+        return u.protocol === "https:" && !/^\/(popout|overlay)\b/.test(u.pathname);
+    } catch {
+        return false;
+    }
+}
+
+function armForPageLoad(wc: WebContents) {
+    const settings = RendererSettings.store.plugins?.GoLiveFix;
+    if (!settings?.enabled || !settings.enterOnStartup || relaunching) return;
+    // Armed already, by the user (held) or an entry that reloads the page.
+    if (wg.available && wg.mode() === "arm") return;
+    let confirmed: false | Promise<void>;
+    try {
+        confirmed = wg.armNow();
+    } catch (e) {
+        log(`não entrou no túnel ao carregar: ${errorMessage(e)}`);
+        return;
+    }
+    if (!confirmed) return;
+    held = false;
+    // The previous page's idle connections (API, CDN) went direct; close them
+    // so the new page opens its own.
+    wc.session.closeAllConnections();
+    log("carregando o Discord: túnel ligado");
+    confirmed.catch(e => log(`túnel desligado de novo: ${errorMessage(e)}`));
 }
 
 // --- exported native functions (callable from the renderer) --------------

@@ -38,20 +38,37 @@ export class LinuxTunnel implements TunnelBackend {
     async set(mode: WgMode): Promise<void> {
         if (!this.available)
             throw new Error("WireGuard indisponível: abra o Discord pelo discord-vpn.sh");
+        for (let i = 0; !this.send(mode, i >= 30); i++) await sleep(100);
+        await this.applied(mode);
+    }
 
-        // Non-blocking open fails with ENXIO while the supervisor is between
-        // reads (or dead) instead of hanging; retry briefly.
-        let fd = -1;
-        for (let i = 0; fd < 0; i++) {
-            try {
-                fd = openSync(CTL!, constants.O_WRONLY | constants.O_NONBLOCK);
-            } catch (e: any) {
-                if (e?.code !== "ENXIO" || i >= 30) throw new Error(`controle do discord-vpn não responde (${e?.code ?? e})`);
-                await sleep(100);
-            }
+    /** Hand "arm" to the supervisor now and wait for it after (see set()). */
+    armNow(): false | Promise<void> {
+        if (!this.available) return false;
+        // Blocking, so shorter retries than set()'s.
+        for (let i = 0; !this.send("arm", i >= 20); i++) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5);
+        return this.applied("arm");
+    }
+
+    /**
+     * Write a mode to the control FIFO. A non-blocking open fails with ENXIO
+     * while the supervisor is between reads (or dead) instead of hanging:
+     * false then, to retry, unless it's the `last` try.
+     */
+    private send(mode: WgMode, last: boolean): boolean {
+        let fd: number;
+        try {
+            fd = openSync(CTL!, constants.O_WRONLY | constants.O_NONBLOCK);
+        } catch (e: any) {
+            if (e?.code !== "ENXIO" || last) throw new Error(`controle do discord-vpn não responde (${e?.code ?? e})`);
+            return false;
         }
         try { writeSync(fd, mode + "\n"); } finally { closeSync(fd); }
+        return true;
+    }
 
+    /** Wait until the supervisor reports having applied a mode. */
+    private async applied(mode: WgMode): Promise<void> {
         // "keep" is a no-op unless armed, so accept whatever the supervisor settles on.
         const want = (m: WgMode | null) => m === mode || (mode === "keep" && m !== "arm");
         for (let i = 0; i < 50; i++) {

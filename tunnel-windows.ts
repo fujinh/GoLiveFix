@@ -82,6 +82,22 @@ export class WindowsTunnel implements TunnelBackend {
     }
 
     /**
+     * Like enterInPlace(), but the state file is written before returning and
+     * the route is checked after (it takes a moment), undoing the arm if the
+     * tunnel can't reach the internet.
+     */
+    armNow(): false | Promise<void> {
+        if (!proxyLoaded()) return false;
+        const ip = tunnelIp();
+        writeStateSync(`arm ${ip}`);
+        this.entered = true;
+        return checkTunnelRoute(ip).catch(async e => {
+            await writeState("disarm");
+            throw e;
+        });
+    }
+
+    /**
      * Place the proxy DLL next to Discord.exe and relaunch Discord armed (or
      * not), so the new process and its children load the DLL. Fails with
      * Discord still open if the WireGuard tunnel isn't up or can't carry
@@ -110,19 +126,31 @@ export class WindowsTunnel implements TunnelBackend {
  * the change. In-place writes could be seen half-done.
  */
 async function writeState(line: string): Promise<void> {
-    mkdirSync(dirname(STATE_PATH), { recursive: true });
+    for (let i = 0; !tryWriteState(line, i); i++) await new Promise(r => setTimeout(r, 25));
+}
+
+/** writeState() that blocks instead, for when the caller can't wait. */
+function writeStateSync(line: string): void {
+    for (let i = 0; !tryWriteState(line, i); i++) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+}
+
+/**
+ * One go at replacing the file. That fails while another process (antivirus,
+ * indexer) has either file open without delete sharing, which is brief:
+ * false then, to retry.
+ */
+function tryWriteState(line: string, attempt: number): boolean {
     const tmp = STATE_PATH + ".tmp";
-    writeFileSync(tmp, line + "\n");
-    // Replacing fails while another process (antivirus, indexer) has either
-    // file open without delete sharing; that's brief, so retry.
-    for (let i = 0; ; i++) {
-        try {
-            renameSync(tmp, STATE_PATH);
-            return;
-        } catch (e: any) {
-            if (!["EPERM", "EACCES", "EBUSY"].includes(e?.code) || i >= 20) throw e;
-            await new Promise(r => setTimeout(r, 25));
-        }
+    if (attempt === 0) {
+        mkdirSync(dirname(STATE_PATH), { recursive: true });
+        writeFileSync(tmp, line + "\n");
+    }
+    try {
+        renameSync(tmp, STATE_PATH);
+        return true;
+    } catch (e: any) {
+        if (!["EPERM", "EACCES", "EBUSY"].includes(e?.code) || attempt >= 20) throw e;
+        return false;
     }
 }
 

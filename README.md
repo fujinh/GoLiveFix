@@ -67,11 +67,12 @@ O config ajustado só fica guardado dentro do WireGuard, criptografado
 ver ou editar, use **Editar** no app do WireGuard. A cópia temporária que o script cria para importar é
 apagada logo em seguida, e o seu `.conf` original não é alterado.
 
-Rodar de novo é seguro: o que já está feito é pulado. Opções:
+Rodar de novo é seguro: o `.conf` é pedido de novo e o túnel `golivefix` é reinstalado com ele, e o
+resto que já está feito é pulado. Opções:
 
 | Opção | O que faz |
 |---|---|
-| `-Conf <arquivo.conf>` | Usa esse config, sem abrir a janela. Com o túnel já instalado, troca o servidor |
+| `-Conf <arquivo.conf>` | Usa esse config, sem abrir a janela para escolher o arquivo |
 | `-VencordDir <pasta>` | Onde fica o Vencord (padrão: a pasta `Vencord` ao lado do script) |
 | `-Branch ptb` / `canary` | Injeta no Discord PTB ou Canary em vez do normal |
 | `-SkipTunnel` | Não mexe no túnel |
@@ -370,8 +371,11 @@ começaram (veja [Como funciona](#conexões-abertas-não-mudam-de-caminho)).
   nada automático solta.
 - **Transmitir ou assistir uma stream:** liga o túnel antes de a conexão da stream abrir e solta depois
   que ela começa.
-- **Abrir o Discord fora do túnel**, com a opção *Entrar no túnel ao abrir o Discord* ligada: coloca
-  ele dentro, como no primeiro item.
+- **Abrir ou recarregar o Discord** (Ctrl+R, ou quando ele recarrega sozinho), com a opção *Entrar no
+  túnel ao abrir o Discord* ligada: liga o túnel antes de a tela carregar, então tudo já conecta por ele.
+  Depois de alguns segundos ele é solto, como no primeiro item. Quando o Discord só entra reiniciando
+  (no Windows, na primeira vez e depois de atualizações; no Linux, fora do `discord-vpn.sh`), ele
+  reinicia, como no primeiro item.
 - **Desativar o plugin:** desliga o túnel.
 
 ### Configurações
@@ -381,7 +385,7 @@ Em **Configurações → Vencord → Plugins → GoLiveFix**:
 | Opção | Padrão | O que faz |
 |---|---|---|
 | Mostrar o escudo ao lado do microfone | ligado | Desligado, o escudo some; o túnel continua controlável por esta tela |
-| Entrar no túnel ao abrir o Discord | desligado | Ao abrir fora do túnel, coloca o Discord dentro, como um clique no escudo. Tenta uma vez por abertura: se o túnel não estiver ativo, só avisa |
+| Entrar no túnel ao abrir o Discord | desligado | Ao abrir ou recarregar (Ctrl+R) o Discord, liga o túnel antes de a tela carregar. Se ele só entra reiniciando, reinicia, uma vez por abertura: se o túnel não estiver ativo, só avisa |
 | Soltar o túnel quando a stream começar | ligado | Solta o túnel depois que a sua stream, ou a que você assiste, começa |
 | Espera para soltar após a stream começar | 4000 ms | Tempo até soltar o túnel |
 | Soltar após entrar no túnel | 5000 ms | Tempo até soltar o túnel depois de entrar nele. `0` = só quando uma stream começar |
