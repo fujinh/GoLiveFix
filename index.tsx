@@ -6,13 +6,14 @@
 
 import { showNotification } from "@api/Notifications";
 import { definePluginSettings } from "@api/Settings";
+import { Button } from "@components/Button";
 import ErrorBoundary from "@components/ErrorBoundary";
 import { Flex } from "@components/Flex";
 import { Heading } from "@components/Heading";
 import { Paragraph } from "@components/Paragraph";
 import { IS_LINUX } from "@utils/constants";
 import definePlugin, { OptionType, type PluginNative } from "@utils/types";
-import { Button, ContextMenuApi, FluxDispatcher, MediaEngineStore, Menu, React, Tooltip, UserStore } from "@webpack/common";
+import { ContextMenuApi, FluxDispatcher, MediaEngineStore, Menu, React, Tooltip, UserStore } from "@webpack/common";
 
 import managedStyle from "./style.css?managed";
 
@@ -308,16 +309,16 @@ function ControlPanel() {
             </Paragraph>
 
             <Flex gap="8px" flexWrap="wrap">
-                <Button color={Button.Colors.BRAND} onClick={() => after(enqueue(prepare))}>
+                <Button variant="primary" onClick={() => after(enqueue(prepare))}>
                     Ligar túnel
                 </Button>
-                <Button color={Button.Colors.PRIMARY} onClick={() => after(enqueue(() => release(true)))}>
+                <Button variant="secondary" onClick={() => after(enqueue(() => release(true)))}>
                     Soltar túnel
                 </Button>
-                <Button color={Button.Colors.RED} onClick={() => after(enqueue(disarm))}>
+                <Button variant="dangerPrimary" onClick={() => after(enqueue(disarm))}>
                     Desligar túnel
                 </Button>
-                <Button color={Button.Colors.PRIMARY} onClick={() => after(enqueue(restart))}>
+                <Button variant="secondary" onClick={() => after(enqueue(restart))}>
                     Reiniciar no túnel
                 </Button>
             </Flex>
