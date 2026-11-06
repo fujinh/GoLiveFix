@@ -96,8 +96,11 @@ stage0() {
 
     # -4: no IPv6 inside, so nothing can sidestep the IPv4-only rules.
     # No port forwarding in either direction.
+    # --no-pidns: newer pasta (2026_10_02+) otherwise gives Discord its own PID
+    # namespace and /proc, hiding the host's processes and breaking game
+    # detection (Rich Presence).
     local rc=0
-    pasta --config-net -4 --quiet --foreground \
+    pasta --config-net -4 --quiet --foreground --no-pidns \
         -t none -u none -T none -U none \
         -- "$0" __stage1 "$@" || rc=$?
 
